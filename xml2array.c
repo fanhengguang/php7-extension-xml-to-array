@@ -87,7 +87,7 @@ static zval php_xml2array_loop(xmlNodePtr a_node) {
 			if (cur_node->type == XML_ELEMENT_NODE) {
 				cur_name = (char*)cur_node->name;
 				r =  php_xml2array_loop(cur_node);
-				//php_xml2array_get_properties (cur_node, &r, cur_name);
+				php_xml2array_get_properties (cur_node, &r, cur_name);
 			} else if (cur_node->type == XML_CDATA_SECTION_NODE || cur_node->type == XML_TEXT_NODE) {
 				xmlChar *z = xmlNodeGetContent(cur_node);
 				ZVAL_STRING(&r, z);
@@ -100,38 +100,41 @@ static zval php_xml2array_loop(xmlNodePtr a_node) {
 	return ret;
 }
 
-//static void php_xml2array_get_properties (xmlNodePtr cur_node, zval * nodes, char *name) {
-//	if (cur_node->properties) {
-//		xmlAttrPtr attr =  NULL;
-//
-//		zval **tmp;
-//		if (zend_symtable_find(Z_ARRVAL_P(nodes),  name, strlen(name) + 1, (void**)&tmp) == FAILURE) {
-//			return;//this should not happen
-//		}
-//
-//		if (Z_TYPE_PP(tmp) != IS_ARRAY) {
-//			zval *value_zval = init_zval_array();
-//			add_assoc_zval(value_zval, "value", *tmp);
-//			zend_symtable_update(Z_ARRVAL_P(nodes), name, strlen(name)+1, (void *) &value_zval, sizeof(zval *), NULL);
-//		}
-//
-//		if (zend_symtable_find(Z_ARRVAL_P(nodes),  name, strlen(name) + 1, (void**)&tmp) == FAILURE) {
-//			return;//this should not happen
-//		}
-//
-//		for(attr = cur_node->properties; NULL != attr; attr = attr->next) {
-//			xmlChar * prop = NULL;
-//			prop = xmlGetProp(cur_node, attr->name);
-//			char *attr_name = (char*)attr->name;
-//			zval *attr_zval;
-//			MAKE_STD_ZVAL(attr_zval);
-//			ZVAL_STRING(attr_zval, prop, 1);
-//			zend_symtable_update(Z_ARRVAL_PP(tmp), attr_name, strlen(attr_name)+1, (void *) &attr_zval, sizeof(zval *), NULL);
-//			xmlFree(prop);
-//		}
-//
-//	}
-//}
+static void php_xml2array_get_properties (xmlNodePtr cur_node, zval *nodes, char *name) {
+	if (cur_node->properties) {
+		xmlAttrPtr attr =  NULL;
+
+		zval *tmp;
+		zend_string *name_zend_str = zend_string_init(name, strlen(name), 0);
+		tmp = zend_symtable_find(Z_ARRVAL_P(nodes), name_zend_str);
+		if (tmp == NULL) {
+			zend_string_free(name_zend_str);
+			return;//this should not happen
+		}
+		zval *target = tmp;
+		if (Z_TYPE_P(tmp) != IS_ARRAY) {
+			zval value_zval;
+			array_init(&value_zval);
+			target = &value_zval;
+			zval copy;
+			ZVAL_COPY(&copy, tmp);
+			add_assoc_zval(&value_zval, "value", &copy);
+			zend_symtable_update(Z_ARRVAL_P(nodes), name_zend_str, &value_zval);
+		}
+		zend_string_free(name_zend_str);
+		for(attr = cur_node->properties; NULL != attr; attr = attr->next) {
+			xmlChar * prop = NULL;
+			prop = xmlGetProp(cur_node, attr->name);
+			char *attr_name = (char*)attr->name;
+			zend_string *attr_name_zend_str = zend_string_init(attr_name, strlen(attr_name), 0);
+			zval attr_zval;
+			ZVAL_STRING(&attr_zval, prop);
+			zend_symtable_update(Z_ARRVAL_P(target), attr_name_zend_str, &attr_zval);
+			//zend_string_free(attr_name_zend_str);//php has a bug https://bugs.php.net/bug.php?id=71930. so here we remove this line temporary
+			xmlFree(prop);
+		}
+	}
+}
 
 /**
  * @ret 父亲zval
@@ -141,46 +144,36 @@ static zval php_xml2array_loop(xmlNodePtr a_node) {
  */
 static void php_xml2array_add_val (zval *ret,const xmlChar *name, zval *r, char *son_key) {
 	zval *tmp = NULL;
-	char *key = (char *)name;//要插入的node 的key
+	char *key = (char *)name;
 
-	zend_string *key_zend_str = zend_string_init(key, strlen(key), 0);//注意free
+	zend_string *key_zend_str = zend_string_init(key, strlen(key), 0);
 	tmp =  zend_symtable_find(Z_ARRVAL_P(ret),  key_zend_str);
 	zend_string_free(key_zend_str);
 
 	if(son_key != NULL && tmp != NULL) {
-		zend_string *son_key_zend_str = zend_string_init(son_key, strlen(son_key), 0);//!!!有问题
+		zend_string *son_key_zend_str = zend_string_init(son_key, strlen(son_key), 0);
 		zval *son_val =  zend_symtable_find(Z_ARRVAL_P(r),  son_key_zend_str);
 		zval *tmp_val = zend_symtable_find(Z_ARRVAL_P(tmp),  son_key_zend_str);
 
 		zval son_val_copy;
-		ZVAL_COPY_VALUE(&son_val_copy, son_val);
-
-		php_printf("========\n");
-		php_var_dump(tmp_val, 1 TSRMLS_CC);
-		php_var_dump(&son_val_copy, 1 TSRMLS_CC);
+		ZVAL_COPY(&son_val_copy, son_val);
 
 		if (tmp_val != NULL) {//已经包含同名子元素
-			if (Z_TYPE_P(tmp_val)  == IS_ARRAY && zend_hash_index_exists(Z_ARRVAL_P(tmp_val), 0)) {//之前已经存储同名子zval
+			if (Z_TYPE_P(tmp_val)  == IS_ARRAY && zend_hash_index_exists(Z_ARRVAL_P(tmp_val), 0)) {//第二次添加同名子元素
 				add_next_index_zval(tmp_val, &son_val_copy);
-				php_var_dump(tmp_val, 1 TSRMLS_CC);
-				//zval_dtor(r);
-			} else {//首次添加此名称的子zval
+			} else {//第一次添加同名子元素
 				zval son_arr;
 				array_init(&son_arr);
-				zval copy = *tmp_val;
-				zval_copy_ctor(&copy);
-
+				zval copy;
+				ZVAL_COPY(&copy, tmp_val);
 				add_next_index_zval(&son_arr, &copy);
 				add_next_index_zval(&son_arr, &son_val_copy);
 				zend_symtable_update(Z_ARRVAL_P(tmp), son_key_zend_str, &son_arr);
-				php_var_dump(tmp, 1 TSRMLS_CC);
-				//zval_dtor(r);
 			}
 		} else {
 			add_assoc_zval(tmp, son_key, &son_val_copy);
-			//zval_dtor(r);
 		}
-		//zval_dtor(r);
+		zval_dtor(r);
 		zend_string_free(son_key_zend_str);
 	} else {
 		add_assoc_zval(ret, key, r);
