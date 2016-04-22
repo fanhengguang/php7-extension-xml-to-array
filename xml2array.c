@@ -130,7 +130,7 @@ static void php_xml2array_get_properties (xmlNodePtr cur_node, zval *nodes, char
 			zval attr_zval;
 			ZVAL_STRING(&attr_zval, prop);
 			zend_symtable_update(Z_ARRVAL_P(target), attr_name_zend_str, &attr_zval);
-			//zend_string_free(attr_name_zend_str);//php has a bug https://bugs.php.net/bug.php?id=71930. so here we remove this line temporary
+			zend_string_release(attr_name_zend_str);
 			xmlFree(prop);
 		}
 	}
