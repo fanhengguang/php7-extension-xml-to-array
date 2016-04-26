@@ -168,7 +168,12 @@ static void php_xml2array_add_val (zval *ret,const xmlChar *name, zval *r, char 
 	tmp =  zend_symtable_find(Z_ARRVAL_P(ret),  key_zend_str);
 	zend_string_free(key_zend_str);
 
-	if(son_key != NULL && tmp != NULL) {
+    if (tmp != NULL && Z_TYPE_P(tmp) == IS_ARRAY && son_key == NULL && Z_TYPE_P(r) == IS_STRING) {//avoid <xx></xx>,<xx></xx>
+    	zval_dtor(r);
+    	return;
+    }
+
+	if(son_key != NULL && tmp != NULL && Z_TYPE_P(tmp) == IS_ARRAY) {
 		zend_string *son_key_zend_str = zend_string_init(son_key, strlen(son_key), 0);
 		zval *son_val =  zend_symtable_find(Z_ARRVAL_P(r),  son_key_zend_str);
 		zval *tmp_val = zend_symtable_find(Z_ARRVAL_P(tmp),  son_key_zend_str);
