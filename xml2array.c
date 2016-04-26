@@ -31,7 +31,7 @@
 #include <libxml/tree.h>
 
 static zval php_xml2array_loop(xmlNode *node);
-static void php_xml2array_parse(zval* return_value, char * xml_str, long xml_len);
+static void php_xml2array_parse(zval* return_value, char * xml_str, long xml_len, zend_bool root);
 static void php_xml2array_add_val (zval *ret,const xmlChar *name, zval *r, char *son_key);
 static void php_xml2array_get_properties (xmlNodePtr cur_node, zval * nodes, char *name);
 
@@ -41,17 +41,22 @@ static int le_xml2array;
 PHP_FUNCTION(xml2array)
 {
 	char *arg = NULL;
+	int argc = ZEND_NUM_ARGS();
 	long arg_len;
-	char *strg;
+	zend_bool root;
 
-	if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "s", &arg, &arg_len) == FAILURE) {
+	if (zend_parse_parameters(argc TSRMLS_CC, "s|b", &arg, &arg_len, &root) == FAILURE) {
 		return;
 	}
 
-	php_xml2array_parse(return_value, arg, arg_len);
+	if (argc == 1) {
+		root = 0;//with out root
+	}
+
+	php_xml2array_parse(return_value, arg, arg_len, root);
 }
 
-static void php_xml2array_parse(zval* return_value, char * xml_str, long xml_len) {
+static void php_xml2array_parse(zval* return_value, char * xml_str, long xml_len, zend_bool root) {
 
 	xmlKeepBlanksDefault(0);
 	xmlDoc *doc = xmlParseMemory(xml_str, xml_len);
@@ -63,7 +68,20 @@ static void php_xml2array_parse(zval* return_value, char * xml_str, long xml_len
 		root_element = xmlDocGetRootElement(doc);
 		zval z;
 		z = php_xml2array_loop(root_element);
-		*return_value = z;
+
+		if (root) {
+			*return_value = z;
+		} else {
+			char *root_name = (char*)root_element->name;
+			zend_string *root_zend_str = zend_string_init(root_name, strlen(root_name), 0);
+			zval *tmp = zend_symtable_find(Z_ARRVAL(z), root_zend_str);
+			zval copy;
+			ZVAL_COPY(&copy, tmp);
+			*return_value = copy;
+			zval_dtor(&z);
+			zend_string_free(root_zend_str);
+		}
+
 		xmlFreeDoc(doc);
 	}
 
@@ -159,9 +177,9 @@ static void php_xml2array_add_val (zval *ret,const xmlChar *name, zval *r, char 
 		ZVAL_COPY(&son_val_copy, son_val);
 
 		if (tmp_val != NULL) {//已经包含同名子元素
-			if (Z_TYPE_P(tmp_val)  == IS_ARRAY && zend_hash_index_exists(Z_ARRVAL_P(tmp_val), 0)) {//第二次添加同名子元素
+			if (Z_TYPE_P(tmp_val)  == IS_ARRAY && zend_hash_index_exists(Z_ARRVAL_P(tmp_val), 0)) {//第三次添加同名子元素
 				add_next_index_zval(tmp_val, &son_val_copy);
-			} else {//第一次添加同名子元素
+			} else {//第二次添加同名子元素
 				zval son_arr;
 				array_init(&son_arr);
 				zval copy;
