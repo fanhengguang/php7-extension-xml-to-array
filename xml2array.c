@@ -110,6 +110,8 @@ static zval php_xml2array_loop(xmlNodePtr a_node) {
 				xmlChar *z = xmlNodeGetContent(cur_node);
 				ZVAL_STRING(&r, z);
 				xmlFree(z);
+			} else { //avoid other type node eg:XML_COMMENT_NODE XML_ENTITY_NODE and so on
+				continue;
 			}
 
 			php_xml2array_add_val(&ret, a_node->name, &r, cur_name);
