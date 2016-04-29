@@ -18,12 +18,14 @@ sudo make install
 ```
 
 ## 使用
+函数原型：xml2array($xml_content, [$root = false]);
+
 ```php
 1 <?php
 2 $file = 'xml.xml';
 3 $content = file_get_contents($file);
 4
-5 $ret = xml2array($content);
+5 $ret = xml2array($content, true);
 6 var_dump($ret);
 
 ```
