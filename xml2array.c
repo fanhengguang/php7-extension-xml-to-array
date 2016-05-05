@@ -34,6 +34,7 @@ static zval php_xml2array_loop(xmlNode *node);
 static void php_xml2array_parse(zval* return_value, char * xml_str, long xml_len, zend_bool root);
 static void php_xml2array_add_val (zval *ret,const xmlChar *name, zval *r, char *son_key);
 static void php_xml2array_get_properties (xmlNodePtr cur_node, zval * nodes, char *name);
+static int has_son_node (xmlNodePtr node);
 
 /* True global resources - no need for thread safety here */
 static int le_xml2array;
@@ -63,7 +64,7 @@ static void php_xml2array_parse(zval* return_value, char * xml_str, long xml_len
 	xmlNode *root_element;
 
 	if (doc == NULL) {
-		return;
+		array_init(return_value);
 	} else {
 		root_element = xmlDocGetRootElement(doc);
 		zval z;
@@ -75,10 +76,15 @@ static void php_xml2array_parse(zval* return_value, char * xml_str, long xml_len
 			char *root_name = (char*)root_element->name;
 			zend_string *root_zend_str = zend_string_init(root_name, strlen(root_name), 0);
 			zval *tmp = zend_symtable_find(Z_ARRVAL(z), root_zend_str);
-			zval copy;
-			ZVAL_COPY(&copy, tmp);
-			*return_value = copy;
-			zval_dtor(&z);
+			if (tmp != NULL) {
+				zval copy;
+				ZVAL_COPY(&copy, tmp);
+				*return_value = copy;
+				zval_dtor(&z);
+			} else {
+				*return_value = z;
+			}
+
 			zend_string_free(root_zend_str);
 		}
 
@@ -94,7 +100,7 @@ static zval php_xml2array_loop(xmlNodePtr a_node) {
 	zval ret;
 	array_init(&ret);
 
-	if (a_node->children == NULL) {
+	if (has_son_node(a_node) == 0) {
 		zval r;
 		ZVAL_STRING(&r, "");
 		php_xml2array_add_val(&ret, a_node->name, &r, NULL);
@@ -202,6 +208,23 @@ static void php_xml2array_add_val (zval *ret,const xmlChar *name, zval *r, char 
 		zend_string_free(son_key_zend_str);
 	} else {
 		add_assoc_zval(ret, key, r);
+	}
+}
+
+/**
+ * @desc check if a xml node has son node(include XML_ELEMENT_NODE, XML_TEXT_NODE, XML_CDATA_SECTION_NODE, but not include comment node)
+ */
+static int has_son_node (xmlNodePtr node) {
+	xmlNodePtr cur_node;
+	if (node->children == NULL) {
+		return 0;
+	} else {
+		for (cur_node = node->children; cur_node; cur_node = cur_node->next) {
+			if (cur_node->type == XML_ELEMENT_NODE || cur_node->type == XML_CDATA_SECTION_NODE || cur_node->type == XML_TEXT_NODE) {
+				return 1;
+			}
+		}
+		return 0;
 	}
 }
 
