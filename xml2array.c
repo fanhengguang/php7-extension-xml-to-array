@@ -100,7 +100,7 @@ static zval php_xml2array_loop(xmlNodePtr a_node) {
 	zval ret;
 	array_init(&ret);
 
-	if (has_son_node(a_node) == 0) {
+	if (a_node->children == NULL || has_son_node(a_node) == 0) {
 		zval r;
 		ZVAL_STRING(&r, "");
 		php_xml2array_add_val(&ret, a_node->name, &r, NULL);
